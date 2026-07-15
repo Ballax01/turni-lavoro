@@ -24,6 +24,11 @@
   <main>
 
     <section id="view-aggiungi" class="view">
+      <div class="quick-actions">
+        <button type="button" id="start-now-btn" class="btn-quick btn-quick-start">▶️ Inizia turno ora</button>
+        <button type="button" id="end-now-btn" class="btn-quick btn-quick-end">⏹️ Termina turno ora</button>
+      </div>
+
       <form id="shift-form" class="card">
         <label for="input-date">Data</label>
         <input type="date" id="input-date" required>
@@ -51,8 +56,15 @@
     <section id="view-turni" class="view">
       <select id="month-select"></select>
       <div id="turni-summary"></div>
-      <h2 class="section-title">Turni del mese</h2>
+      <div class="turni-list-header">
+        <h2 class="section-title">Turni del mese</h2>
+        <button type="button" id="select-mode-btn" class="btn-small">Seleziona</button>
+      </div>
       <div id="turni-list" class="shift-list"></div>
+      <div id="bulk-actions" class="bulk-actions">
+        <button type="button" id="bulk-cancel-btn" class="btn-secondary">Annulla</button>
+        <button type="button" id="bulk-delete-btn" class="btn-danger" disabled>Elimina selezionati (0)</button>
+      </div>
     </section>
 
     <section id="view-riepilogo" class="view">

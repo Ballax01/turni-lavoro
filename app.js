@@ -83,6 +83,22 @@ function formatCurrency(value) {
   return value.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 }
 
+// Arrotonda all'ora piena o alla mezz'ora: <15 giù, 15-44 a :30, >=45 all'ora dopo.
+function roundToHalfHour(date) {
+  let hour = date.getHours();
+  const minute = date.getMinutes();
+  let roundedMinute;
+  if (minute < 15) {
+    roundedMinute = 0;
+  } else if (minute < 45) {
+    roundedMinute = 30;
+  } else {
+    roundedMinute = 0;
+    hour = (hour + 1) % 24;
+  }
+  return `${hour.toString().padStart(2, '0')}:${roundedMinute.toString().padStart(2, '0')}`;
+}
+
 function shiftPay(s) {
   if (!s.end) return 0;
   const mins = durationMinutes(s.start, s.end);
@@ -111,6 +127,7 @@ const views = document.querySelectorAll('.view');
 const tabButtons = document.querySelectorAll('nav.tabbar button');
 
 function switchView(name) {
+  if (name !== 'turni' && selectionMode) exitSelectionMode();
   views.forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
   tabButtons.forEach(b => b.classList.toggle('active', b.dataset.view === name));
   if (name === 'turni') renderTurni();
@@ -150,6 +167,36 @@ form.addEventListener('submit', e => {
   resetForm();
   renderRecent();
   showToast('Turno salvato ✓');
+});
+
+document.getElementById('start-now-btn').addEventListener('click', () => {
+  const now = new Date();
+  const start = roundToHalfHour(now);
+  shifts.push({
+    id: uid(),
+    date: todayISO(),
+    start,
+    end: null,
+    rate,
+  });
+  saveShifts(shifts);
+  renderRecent();
+  showToast(`Turno iniziato alle ${start} ✓`);
+});
+
+document.getElementById('end-now-btn').addEventListener('click', () => {
+  const open = shifts
+    .filter(s => !s.end)
+    .sort((a, b) => (a.date + a.start > b.date + b.start ? -1 : 1))[0];
+  if (!open) {
+    showToast('Nessun turno aperto da terminare');
+    return;
+  }
+  const end = roundToHalfHour(new Date());
+  open.end = end;
+  saveShifts(shifts);
+  renderRecent();
+  showToast(`Turno terminato alle ${end} ✓`);
 });
 
 function renderRecent() {
@@ -206,7 +253,10 @@ function renderTurni() {
   renderTurniTable();
 }
 
-monthSelect.addEventListener('change', renderTurniTable);
+monthSelect.addEventListener('change', () => {
+  if (selectionMode) exitSelectionMode();
+  renderTurniTable();
+});
 
 function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -242,11 +292,77 @@ function renderTurniTable() {
     list.innerHTML = '<div class="empty-state">Nessun turno in questo mese.</div>';
     return;
   }
-  list.innerHTML = monthShifts.map(s => shiftRowHTML(s)).join('');
-  list.querySelectorAll('.shift-row').forEach(row => {
-    row.addEventListener('click', () => openEdit(row.dataset.id));
-  });
+
+  if (selectionMode) {
+    list.innerHTML = monthShifts.map(s => `
+      <label class="shift-row selectable" data-id="${s.id}">
+        <input type="checkbox" class="bulk-checkbox" data-id="${s.id}" ${selectedIds.has(s.id) ? 'checked' : ''}>
+        <div style="flex:1">
+          <div class="date">${formatDateShort(s.date)}</div>
+          <div class="time">${s.start}-${s.end || '?'}</div>
+        </div>
+        <div class="hours ${!s.end ? 'pending' : ''}">${s.end ? formatHours(durationMinutes(s.start, s.end)) + ' h' : 'da completare'}</div>
+      </label>`).join('');
+    list.querySelectorAll('.bulk-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) selectedIds.add(cb.dataset.id);
+        else selectedIds.delete(cb.dataset.id);
+        updateBulkDeleteLabel();
+      });
+    });
+  } else {
+    list.innerHTML = monthShifts.map(s => shiftRowHTML(s)).join('');
+    list.querySelectorAll('.shift-row').forEach(row => {
+      row.addEventListener('click', () => openEdit(row.dataset.id));
+    });
+  }
 }
+
+// --- Selezione multipla / eliminazione in blocco ---
+
+let selectionMode = false;
+let selectedIds = new Set();
+
+const selectModeBtn = document.getElementById('select-mode-btn');
+const bulkActions = document.getElementById('bulk-actions');
+const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+const bulkCancelBtn = document.getElementById('bulk-cancel-btn');
+
+function updateBulkDeleteLabel() {
+  bulkDeleteBtn.textContent = `Elimina selezionati (${selectedIds.size})`;
+  bulkDeleteBtn.disabled = selectedIds.size === 0;
+}
+
+function exitSelectionMode() {
+  selectionMode = false;
+  selectedIds.clear();
+  selectModeBtn.textContent = 'Seleziona';
+  bulkActions.classList.remove('show');
+}
+
+selectModeBtn.addEventListener('click', () => {
+  selectionMode = !selectionMode;
+  selectedIds.clear();
+  selectModeBtn.textContent = selectionMode ? 'Annulla' : 'Seleziona';
+  bulkActions.classList.toggle('show', selectionMode);
+  updateBulkDeleteLabel();
+  renderTurniTable();
+});
+
+bulkCancelBtn.addEventListener('click', () => {
+  exitSelectionMode();
+  renderTurniTable();
+});
+
+bulkDeleteBtn.addEventListener('click', () => {
+  if (selectedIds.size === 0) return;
+  const n = selectedIds.size;
+  shifts = shifts.filter(s => !selectedIds.has(s.id));
+  saveShifts(shifts);
+  exitSelectionMode();
+  refreshAll();
+  showToast(`${n} turni eliminati`);
+});
 
 // --- Vista "Riepilogo" (tutti i mesi) ---
 
@@ -307,11 +423,31 @@ function renderRiepilogo() {
           </div>
         </div>
         <button type="button" class="btn-secondary btn-copy" data-month="${key}">📋 Copia testo turni</button>
+        <div class="sim-row">
+          <label for="sim-${key}">E se guadagnassi... (simulazione, non modifica i turni)</label>
+          <input type="number" id="sim-${key}" class="sim-rate" data-mins="${mins}" placeholder="Tariffa da provare (€/h)" step="0.5" min="0">
+          <div class="sim-result"></div>
+        </div>
       </div>`;
   }).join('');
 
   list.querySelectorAll('.btn-copy').forEach(btn => {
     btn.addEventListener('click', () => copyMonthText(btn.dataset.month, btn));
+  });
+
+  list.querySelectorAll('.sim-rate').forEach(input => {
+    input.addEventListener('input', () => {
+      const mins = Number(input.dataset.mins);
+      const v = parseFloat(String(input.value).replace(',', '.'));
+      const resultEl = input.nextElementSibling;
+      if (Number.isFinite(v) && v > 0) {
+        resultEl.textContent = `Con ${v}€/h avresti guadagnato: ${formatCurrency((mins / 60) * v)}`;
+        resultEl.classList.add('has-value');
+      } else {
+        resultEl.textContent = '';
+        resultEl.classList.remove('has-value');
+      }
+    });
   });
 }
 
