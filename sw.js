@@ -1,4 +1,4 @@
-const CACHE_NAME = 'turni-lavoro-v6';
+const CACHE_NAME = 'turni-lavoro-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,9 @@ const ASSETS = [
   './app.js',
   './manifest.json',
   './icon.svg',
+  './icon-180.png',
+  './icon-192.png',
+  './icon-512.png',
 ];
 
 self.addEventListener('install', event => {
