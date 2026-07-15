@@ -169,9 +169,20 @@ form.addEventListener('submit', e => {
   showToast('Turno salvato ✓');
 });
 
+// Turno "in corso": aperto (senza fine) e con data odierna o passata.
+// Esclude i turni futuri pre-inseriti (es. "da completare" per i prossimi giorni),
+// che altrimenti verrebbero scambiati per il turno appena iniziato/da chiudere.
+function findOngoingShift() {
+  const todayStr = todayISO();
+  return shifts
+    .filter(s => !s.end && s.date <= todayStr)
+    .sort((a, b) => (a.date + a.start > b.date + b.start ? -1 : 1))[0];
+}
+
 document.getElementById('start-now-btn').addEventListener('click', () => {
   const now = new Date();
   const start = roundToHalfHour(now);
+  const alreadyOngoing = findOngoingShift();
   shifts.push({
     id: uid(),
     date: todayISO(),
@@ -181,13 +192,15 @@ document.getElementById('start-now-btn').addEventListener('click', () => {
   });
   saveShifts(shifts);
   renderRecent();
-  showToast(`Turno iniziato alle ${start} ✓`);
+  if (alreadyOngoing) {
+    showToast(`Turno iniziato ✓ — attenzione: il turno del ${formatDateShort(alreadyOngoing.date)} risulta ancora aperto`);
+  } else {
+    showToast(`Turno iniziato alle ${start} ✓`);
+  }
 });
 
 document.getElementById('end-now-btn').addEventListener('click', () => {
-  const open = shifts
-    .filter(s => !s.end)
-    .sort((a, b) => (a.date + a.start > b.date + b.start ? -1 : 1))[0];
+  const open = findOngoingShift();
   if (!open) {
     showToast('Nessun turno aperto da terminare');
     return;
