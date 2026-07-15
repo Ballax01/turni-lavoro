@@ -491,6 +491,73 @@ async function copyMonthText(key, btn) {
   setTimeout(() => { btn.textContent = original; }, 1500);
 }
 
+// --- Backup (esporta / importa) ---
+
+document.getElementById('export-backup-btn').addEventListener('click', () => {
+  const backup = {
+    app: 'turni-lavoro',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    rate,
+    shifts,
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `turni-backup-${todayISO()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Backup esportato ✓');
+});
+
+const importBackupBtn = document.getElementById('import-backup-btn');
+const importBackupFile = document.getElementById('import-backup-file');
+
+importBackupBtn.addEventListener('click', () => importBackupFile.click());
+
+importBackupFile.addEventListener('change', () => {
+  const file = importBackupFile.files[0];
+  importBackupFile.value = '';
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try {
+      data = JSON.parse(reader.result);
+    } catch {
+      showToast('File non valido');
+      return;
+    }
+    if (!data || !Array.isArray(data.shifts)) {
+      showToast('File non valido');
+      return;
+    }
+
+    let added = 0, skipped = 0;
+    for (const s of data.shifts) {
+      if (!s || typeof s.date !== 'string' || typeof s.start !== 'string') continue;
+      const exists = shifts.some(x => x.date === s.date && x.start === s.start && x.end === (s.end || null));
+      if (exists) { skipped++; continue; }
+      shifts.push({
+        id: uid(),
+        date: s.date,
+        start: s.start,
+        end: s.end || null,
+        rate: Number.isFinite(s.rate) ? s.rate : rate,
+      });
+      added++;
+    }
+    if (added > 0) saveShifts(shifts);
+    refreshAll();
+    showToast(`${added} turni importati dal backup${skipped ? `, ${skipped} già presenti` : ''}`);
+  };
+  reader.readAsText(file);
+});
+
 // --- Modifica / elimina turno ---
 
 const dialog = document.getElementById('edit-dialog');

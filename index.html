@@ -74,6 +74,14 @@
       <div id="riepilogo-total"></div>
       <h2 class="section-title">Per mese</h2>
       <div id="riepilogo-list"></div>
+
+      <h2 class="section-title" style="margin-top:20px">Backup</h2>
+      <p class="backup-hint">I turni sono salvati solo su questo telefono. Esporta un backup ogni tanto per non rischiare di perderli.</p>
+      <div class="btn-row" style="margin-top:0">
+        <button type="button" id="export-backup-btn" class="btn-secondary">💾 Esporta backup</button>
+        <button type="button" id="import-backup-btn" class="btn-secondary">📂 Importa backup</button>
+      </div>
+      <input type="file" id="import-backup-file" accept="application/json" style="display:none">
     </section>
 
   </main>
