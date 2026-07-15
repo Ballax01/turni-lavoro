@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0f1115">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<title>Turni Lavoro</title>
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <h1 id="page-title">Nuovo turno</h1>
+  </header>
+
+  <main>
+
+    <section id="view-aggiungi" class="view">
+      <form id="shift-form" class="card">
+        <label for="input-date">Data</label>
+        <input type="date" id="input-date" required>
+
+        <div class="row2">
+          <div>
+            <label for="input-start">Inizio</label>
+            <input type="time" id="input-start" required>
+          </div>
+          <div>
+            <label for="input-end">Fine <span class="optional">(anche dopo)</span></label>
+            <input type="time" id="input-end">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary">Salva turno</button>
+      </form>
+
+      <button type="button" id="open-import-btn" class="btn-secondary" style="width:100%; margin-bottom:16px;">📥 Importa più turni da un testo</button>
+
+      <h2 class="section-title">Ultimi turni</h2>
+      <div id="recent-list" class="shift-list"></div>
+    </section>
+
+    <section id="view-turni" class="view">
+      <select id="month-select"></select>
+      <div id="turni-summary"></div>
+      <h2 class="section-title">Turni del mese</h2>
+      <div id="turni-list" class="shift-list"></div>
+    </section>
+
+    <section id="view-riepilogo" class="view">
+      <label for="rate-input">Tariffa oraria attuale (€) — usata per i nuovi turni</label>
+      <input type="number" id="rate-input" step="0.5" min="0">
+      <h2 class="section-title" style="margin-top:20px">Totale complessivo</h2>
+      <div id="riepilogo-total"></div>
+      <h2 class="section-title">Per mese</h2>
+      <div id="riepilogo-list"></div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="aggiungi" class="active"><span class="icon">➕</span>Aggiungi</button>
+    <button data-view="turni"><span class="icon">📅</span>Turni</button>
+    <button data-view="riepilogo"><span class="icon">📊</span>Riepilogo</button>
+  </nav>
+
+</div>
+
+<dialog id="edit-dialog">
+  <form id="edit-form" class="card">
+    <label for="edit-date">Data</label>
+    <input type="date" id="edit-date" required>
+    <div class="row2">
+      <div>
+        <label for="edit-start">Inizio</label>
+        <input type="time" id="edit-start" required>
+      </div>
+      <div>
+        <label for="edit-end">Fine <span class="optional">(anche dopo)</span></label>
+        <input type="time" id="edit-end">
+      </div>
+    </div>
+    <label for="edit-rate">Tariffa di questo turno (€/h)</label>
+    <input type="number" id="edit-rate" step="0.5" min="0" required>
+    <div class="btn-row">
+      <button type="button" id="delete-btn" class="btn-danger">Elimina</button>
+      <button type="button" id="cancel-btn" class="btn-secondary">Annulla</button>
+      <button type="submit" class="btn-primary" style="margin-top:0">Salva</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="import-dialog">
+  <div class="card">
+    <label for="import-textarea">Incolla qui il testo (una riga per turno)</label>
+    <textarea id="import-textarea" rows="8" placeholder="01/07/26 17:30-01:30 / 8&#10;08/07/26 17:30-00:15 / 6,75"></textarea>
+    <div id="import-preview"></div>
+    <div class="btn-row">
+      <button type="button" id="import-cancel-btn" class="btn-secondary">Annulla</button>
+      <button type="button" id="import-confirm-btn" class="btn-primary" style="margin-top:0" disabled>Aggiungi turni</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

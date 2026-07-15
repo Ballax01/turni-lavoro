@@ -1,0 +1,504 @@
+const STORAGE_KEY = 'turni-lavoro:shifts';
+const RATE_KEY = 'turni-lavoro:rate';
+
+const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno',
+  'luglio','agosto','settembre','ottobre','novembre','dicembre'];
+const GIORNI = ['dom','lun','mar','mer','gio','ven','sab'];
+
+function loadShifts() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveShifts(shifts) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(shifts));
+}
+
+function loadRate() {
+  const r = parseFloat(localStorage.getItem(RATE_KEY));
+  return Number.isFinite(r) ? r : 7;
+}
+
+function saveRate(rate) {
+  localStorage.setItem(RATE_KEY, String(rate));
+}
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+// --- Time helpers ---
+
+function toMinutes(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function durationMinutes(start, end) {
+  let d = toMinutes(end) - toMinutes(start);
+  if (d <= 0) d += 24 * 60; // turno che passa la mezzanotte
+  return d;
+}
+
+function formatHours(totalMinutes) {
+  const hours = totalMinutes / 60;
+  const rounded = Math.round(hours * 100) / 100;
+  if (Number.isInteger(rounded)) return String(rounded);
+  return rounded.toFixed(2).replace(/0$/, '').replace('.', ',');
+}
+
+function formatDateShort(dateStr) {
+  const [y, m, d] = dateStr.split('-');
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+function formatDateLong(dateStr) {
+  const dt = new Date(dateStr + 'T00:00:00');
+  return `${GIORNI[dt.getDay()]} ${dt.getDate()} ${MESI[dt.getMonth()]}`;
+}
+
+function monthKey(dateStr) {
+  return dateStr.slice(0, 7); // YYYY-MM
+}
+
+function formatMonthLabel(key) {
+  const [y, m] = key.split('-').map(Number);
+  return `${MESI[m - 1]} ${y}`;
+}
+
+function formatCurrency(value) {
+  return value.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+}
+
+function shiftPay(s) {
+  if (!s.end) return 0;
+  const mins = durationMinutes(s.start, s.end);
+  const r = Number.isFinite(s.rate) ? s.rate : rate;
+  return (mins / 60) * r;
+}
+
+function shiftMinutes(s) {
+  return s.end ? durationMinutes(s.start, s.end) : 0;
+}
+
+function todayISO() {
+  const d = new Date();
+  const tz = d.getTimezoneOffset() * 60000;
+  return new Date(d - tz).toISOString().slice(0, 10);
+}
+
+// --- State ---
+let shifts = loadShifts();
+let rate = loadRate();
+let editingId = null;
+
+// --- Views / tabs ---
+
+const views = document.querySelectorAll('.view');
+const tabButtons = document.querySelectorAll('nav.tabbar button');
+
+function switchView(name) {
+  views.forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  tabButtons.forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  if (name === 'turni') renderTurni();
+  if (name === 'riepilogo') renderRiepilogo();
+  if (name === 'aggiungi') renderRecent();
+}
+
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
+});
+
+// --- Form "Aggiungi" ---
+
+const form = document.getElementById('shift-form');
+const inputDate = document.getElementById('input-date');
+const inputStart = document.getElementById('input-start');
+const inputEnd = document.getElementById('input-end');
+
+function resetForm() {
+  inputDate.value = todayISO();
+  inputStart.value = '17:30';
+  inputEnd.value = '';
+}
+resetForm();
+
+form.addEventListener('submit', e => {
+  e.preventDefault();
+  if (!inputDate.value || !inputStart.value) return;
+  shifts.push({
+    id: uid(),
+    date: inputDate.value,
+    start: inputStart.value,
+    end: inputEnd.value || null,
+    rate: rate,
+  });
+  saveShifts(shifts);
+  resetForm();
+  renderRecent();
+});
+
+function renderRecent() {
+  const list = document.getElementById('recent-list');
+  const sorted = [...shifts].sort((a, b) => (a.date + a.start < b.date + b.start ? 1 : -1));
+  const recent = sorted.slice(0, 5);
+  if (recent.length === 0) {
+    list.innerHTML = '<div class="empty-state">Nessun turno registrato ancora.</div>';
+    return;
+  }
+  list.innerHTML = recent.map(s => shiftRowHTML(s)).join('');
+  list.querySelectorAll('.shift-row').forEach(row => {
+    row.addEventListener('click', () => openEdit(row.dataset.id));
+  });
+}
+
+function shiftRowHTML(s) {
+  if (!s.end) {
+    return `
+      <div class="shift-row" data-id="${s.id}">
+        <div>
+          <div class="date">${formatDateShort(s.date)}</div>
+          <div class="time">${s.start}-?</div>
+        </div>
+        <div class="hours pending">da completare</div>
+      </div>`;
+  }
+  const mins = durationMinutes(s.start, s.end);
+  return `
+    <div class="shift-row" data-id="${s.id}">
+      <div>
+        <div class="date">${formatDateShort(s.date)}</div>
+        <div class="time">${s.start}-${s.end}</div>
+      </div>
+      <div class="hours">${formatHours(mins)} h</div>
+    </div>`;
+}
+
+// --- Vista "Turni" (per mese) ---
+
+const monthSelect = document.getElementById('month-select');
+
+function availableMonths() {
+  const keys = new Set(shifts.map(s => monthKey(s.date)));
+  keys.add(monthKey(todayISO()));
+  return [...keys].sort().reverse();
+}
+
+function renderTurni() {
+  const months = availableMonths();
+  const prevSelected = monthSelect.value;
+  monthSelect.innerHTML = months.map(k => `<option value="${k}">${capitalize(formatMonthLabel(k))}</option>`).join('');
+  monthSelect.value = months.includes(prevSelected) ? prevSelected : months[0];
+  renderTurniTable();
+}
+
+monthSelect.addEventListener('change', renderTurniTable);
+
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function renderTurniTable() {
+  const key = monthSelect.value;
+  const monthShifts = shifts
+    .filter(s => monthKey(s.date) === key)
+    .sort((a, b) => (a.date + a.start > b.date + b.start ? 1 : -1));
+
+  const totalMin = monthShifts.reduce((sum, s) => sum + shiftMinutes(s), 0);
+  const totalPay = monthShifts.reduce((sum, s) => sum + shiftPay(s), 0);
+
+  document.getElementById('turni-summary').innerHTML = `
+    <div class="summary-bar">
+      <div class="item">
+        <div class="label">Turni</div>
+        <div class="value">${monthShifts.length}</div>
+      </div>
+      <div class="item">
+        <div class="label">Ore totali</div>
+        <div class="value">${formatHours(totalMin)}</div>
+      </div>
+      <div class="item">
+        <div class="label">Stipendio</div>
+        <div class="value">${formatCurrency(totalPay)}</div>
+      </div>
+    </div>`;
+
+  const list = document.getElementById('turni-list');
+  if (monthShifts.length === 0) {
+    list.innerHTML = '<div class="empty-state">Nessun turno in questo mese.</div>';
+    return;
+  }
+  list.innerHTML = monthShifts.map(s => shiftRowHTML(s)).join('');
+  list.querySelectorAll('.shift-row').forEach(row => {
+    row.addEventListener('click', () => openEdit(row.dataset.id));
+  });
+}
+
+// --- Vista "Riepilogo" (tutti i mesi) ---
+
+const rateInput = document.getElementById('rate-input');
+rateInput.value = rate;
+rateInput.addEventListener('change', () => {
+  const v = parseFloat(rateInput.value.replace(',', '.'));
+  if (Number.isFinite(v) && v > 0) {
+    rate = v;
+    saveRate(rate);
+    renderRiepilogo();
+    renderTurniTable();
+  }
+});
+
+function renderRiepilogo() {
+  const byMonth = {};
+  for (const s of shifts) {
+    const key = monthKey(s.date);
+    if (!byMonth[key]) byMonth[key] = { mins: 0, pay: 0 };
+    byMonth[key].mins += shiftMinutes(s);
+    byMonth[key].pay += shiftPay(s);
+  }
+  const keys = Object.keys(byMonth).sort().reverse();
+
+  const grandTotalMin = Object.values(byMonth).reduce((a, b) => a + b.mins, 0);
+  const grandTotalPay = Object.values(byMonth).reduce((a, b) => a + b.pay, 0);
+  document.getElementById('riepilogo-total').innerHTML = `
+    <div class="summary-bar">
+      <div class="item">
+        <div class="label">Ore totali</div>
+        <div class="value">${formatHours(grandTotalMin)}</div>
+      </div>
+      <div class="item">
+        <div class="label">Stipendio totale</div>
+        <div class="value">${formatCurrency(grandTotalPay)}</div>
+      </div>
+    </div>`;
+
+  const list = document.getElementById('riepilogo-list');
+  if (keys.length === 0) {
+    list.innerHTML = '<div class="empty-state">Nessun dato ancora.</div>';
+    return;
+  }
+  list.innerHTML = keys.map(key => {
+    const { mins, pay } = byMonth[key];
+    return `
+      <div class="month-card">
+        <div class="month-name">${formatMonthLabel(key)}</div>
+        <div class="stats">
+          <div>
+            <div class="label">Ore</div>
+            <div class="value">${formatHours(mins)}</div>
+          </div>
+          <div>
+            <div class="label">Stipendio</div>
+            <div class="value pay">${formatCurrency(pay)}</div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary btn-copy" data-month="${key}">📋 Copia testo turni</button>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.btn-copy').forEach(btn => {
+    btn.addEventListener('click', () => copyMonthText(btn.dataset.month, btn));
+  });
+}
+
+function buildMonthText(key) {
+  const monthShifts = shifts
+    .filter(s => monthKey(s.date) === key && s.end)
+    .sort((a, b) => (a.date + a.start > b.date + b.start ? 1 : -1));
+
+  const lines = monthShifts.map(s => {
+    const mins = durationMinutes(s.start, s.end);
+    return `${formatDateShort(s.date)} ${s.start}-${s.end} / ${formatHours(mins)}`;
+  });
+
+  const totalMin = monthShifts.reduce((sum, s) => sum + durationMinutes(s.start, s.end), 0);
+
+  return [
+    capitalize(formatMonthLabel(key)),
+    '',
+    ...lines,
+    '',
+    `Totale ore: ${formatHours(totalMin)}`,
+  ].join('\n');
+}
+
+async function copyMonthText(key, btn) {
+  const text = buildMonthText(key);
+  const original = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  btn.textContent = '✓ Copiato';
+  setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
+// --- Modifica / elimina turno ---
+
+const dialog = document.getElementById('edit-dialog');
+const editForm = document.getElementById('edit-form');
+const editDate = document.getElementById('edit-date');
+const editStart = document.getElementById('edit-start');
+const editEnd = document.getElementById('edit-end');
+const editRate = document.getElementById('edit-rate');
+
+function openEdit(id) {
+  const s = shifts.find(x => x.id === id);
+  if (!s) return;
+  editingId = id;
+  editDate.value = s.date;
+  editStart.value = s.start;
+  editEnd.value = s.end || '';
+  editRate.value = Number.isFinite(s.rate) ? s.rate : rate;
+  dialog.showModal();
+}
+
+editForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const s = shifts.find(x => x.id === editingId);
+  if (s) {
+    s.date = editDate.value;
+    s.start = editStart.value;
+    s.end = editEnd.value || null;
+    const r = parseFloat(String(editRate.value).replace(',', '.'));
+    s.rate = Number.isFinite(r) && r > 0 ? r : rate;
+    saveShifts(shifts);
+  }
+  dialog.close();
+  refreshAll();
+});
+
+document.getElementById('delete-btn').addEventListener('click', () => {
+  shifts = shifts.filter(x => x.id !== editingId);
+  saveShifts(shifts);
+  dialog.close();
+  refreshAll();
+});
+
+document.getElementById('cancel-btn').addEventListener('click', () => dialog.close());
+
+// --- Importa turni da testo ---
+
+const importDialog = document.getElementById('import-dialog');
+const importTextarea = document.getElementById('import-textarea');
+const importPreview = document.getElementById('import-preview');
+const importConfirmBtn = document.getElementById('import-confirm-btn');
+let importParsed = [];
+
+document.getElementById('open-import-btn').addEventListener('click', () => {
+  importTextarea.value = '';
+  importPreview.innerHTML = '';
+  importParsed = [];
+  importConfirmBtn.disabled = true;
+  importDialog.showModal();
+  importTextarea.focus();
+});
+
+document.getElementById('import-cancel-btn').addEventListener('click', () => importDialog.close());
+
+// Riconosce righe con una data (gg/mm/aa o simili) e due orari (hh:mm),
+// ignorando il resto (es. "/ 8" o "(8 ore)") perché le ore si ricalcolano da inizio/fine.
+function parseShiftLine(line) {
+  const dateMatch = line.match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{2,4})/);
+  if (!dateMatch) return null;
+  const rest = line.slice(dateMatch.index + dateMatch[0].length);
+  const timeMatches = [...rest.matchAll(/(\d{1,2})[:.](\d{2})/g)];
+  if (timeMatches.length < 2) return null;
+
+  let [, d, m, y] = dateMatch;
+  const dNum = Number(d), mNum = Number(m);
+  if (dNum < 1 || dNum > 31 || mNum < 1 || mNum > 12) return null;
+  if (y.length === 2) y = '20' + y;
+  if (y.length !== 4) return null;
+
+  const sh = Number(timeMatches[0][1]), sm = Number(timeMatches[0][2]);
+  const eh = Number(timeMatches[1][1]), em = Number(timeMatches[1][2]);
+  if (sh > 23 || eh > 23 || sm > 59 || em > 59) return null;
+
+  const date = `${y}-${mNum.toString().padStart(2, '0')}-${dNum.toString().padStart(2, '0')}`;
+  const start = `${sh.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`;
+  const end = `${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}`;
+  return { date, start, end };
+}
+
+function isDuplicate(p) {
+  return shifts.some(s => s.date === p.date && s.start === p.start && s.end === p.end);
+}
+
+function renderImportPreview() {
+  const lines = importTextarea.value.split('\n').map(l => l.trim()).filter(Boolean);
+  importParsed = [];
+  const unrecognized = [];
+
+  for (const line of lines) {
+    const p = parseShiftLine(line);
+    if (p) {
+      p.duplicate = isDuplicate(p);
+      importParsed.push(p);
+    } else {
+      unrecognized.push(line);
+    }
+  }
+
+  if (importParsed.length === 0) {
+    importPreview.innerHTML = unrecognized.length
+      ? '<div class="import-unrecognized">Nessuna riga riconosciuta. Assicurati che ogni riga abbia una data e due orari (es. 01/07/26 17:30-01:30).</div>'
+      : '';
+    importConfirmBtn.disabled = true;
+    return;
+  }
+
+  importPreview.innerHTML =
+    importParsed.map((p, i) => `
+      <label class="import-preview-row">
+        <input type="checkbox" data-idx="${i}" ${p.duplicate ? '' : 'checked'}>
+        <span>${formatDateShort(p.date)} ${p.start}-${p.end}${p.duplicate ? ' <span class="dup">(già presente)</span>' : ''}</span>
+      </label>`).join('') +
+    `<div class="import-summary">${importParsed.length} righe riconosciute su ${lines.length} totali.</div>` +
+    (unrecognized.length ? `<div class="import-unrecognized">Non riconosciute:\n${unrecognized.join('\n')}</div>` : '');
+
+  importConfirmBtn.disabled = false;
+}
+
+importTextarea.addEventListener('input', renderImportPreview);
+
+importConfirmBtn.addEventListener('click', () => {
+  const checked = importPreview.querySelectorAll('input[type="checkbox"]:checked');
+  let added = 0;
+  checked.forEach(cb => {
+    const p = importParsed[Number(cb.dataset.idx)];
+    if (!p) return;
+    shifts.push({ id: uid(), date: p.date, start: p.start, end: p.end, rate });
+    added++;
+  });
+  if (added > 0) saveShifts(shifts);
+  importDialog.close();
+  refreshAll();
+});
+
+function refreshAll() {
+  renderRecent();
+  renderTurni();
+  renderRiepilogo();
+}
+
+// --- Init ---
+switchView('aggiungi');
+
+// --- Service worker ---
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
