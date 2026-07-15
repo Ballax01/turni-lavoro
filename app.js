@@ -414,7 +414,7 @@ function parseShiftLine(line) {
   if (!dateMatch) return null;
   const rest = line.slice(dateMatch.index + dateMatch[0].length);
   const timeMatches = [...rest.matchAll(/(\d{1,2})[:.](\d{2})/g)];
-  if (timeMatches.length < 2) return null;
+  if (timeMatches.length < 1) return null;
 
   let [, d, m, y] = dateMatch;
   const dNum = Number(d), mNum = Number(m);
@@ -423,12 +423,17 @@ function parseShiftLine(line) {
   if (y.length !== 4) return null;
 
   const sh = Number(timeMatches[0][1]), sm = Number(timeMatches[0][2]);
-  const eh = Number(timeMatches[1][1]), em = Number(timeMatches[1][2]);
-  if (sh > 23 || eh > 23 || sm > 59 || em > 59) return null;
+  if (sh > 23 || sm > 59) return null;
 
   const date = `${y}-${mNum.toString().padStart(2, '0')}-${dNum.toString().padStart(2, '0')}`;
   const start = `${sh.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`;
-  const end = `${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}`;
+
+  let end = null;
+  if (timeMatches.length >= 2) {
+    const eh = Number(timeMatches[1][1]), em = Number(timeMatches[1][2]);
+    if (eh > 23 || em > 59) return null;
+    end = `${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}`;
+  }
   return { date, start, end };
 }
 
@@ -453,7 +458,7 @@ function renderImportPreview() {
 
   if (importParsed.length === 0) {
     importPreview.innerHTML = unrecognized.length
-      ? '<div class="import-unrecognized">Nessuna riga riconosciuta. Assicurati che ogni riga abbia una data e due orari (es. 01/07/26 17:30-01:30).</div>'
+      ? '<div class="import-unrecognized">Nessuna riga riconosciuta. Assicurati che ogni riga abbia una data e almeno l\'orario di inizio (es. 01/07/26 17:30-01:30 oppure solo 01/07/26 17:30).</div>'
       : '';
     importConfirmBtn.disabled = true;
     return;
@@ -463,7 +468,7 @@ function renderImportPreview() {
     importParsed.map((p, i) => `
       <label class="import-preview-row">
         <input type="checkbox" data-idx="${i}" ${p.duplicate ? '' : 'checked'}>
-        <span>${formatDateShort(p.date)} ${p.start}-${p.end}${p.duplicate ? ' <span class="dup">(già presente)</span>' : ''}</span>
+        <span>${formatDateShort(p.date)} ${p.start}-${p.end || '?'}${!p.end ? ' <span class="dup">(da completare)</span>' : ''}${p.duplicate ? ' <span class="dup">(già presente)</span>' : ''}</span>
       </label>`).join('') +
     `<div class="import-summary">${importParsed.length} righe riconosciute su ${lines.length} totali.</div>` +
     (unrecognized.length ? `<div class="import-unrecognized">Non riconosciute:\n${unrecognized.join('\n')}</div>` : '');
