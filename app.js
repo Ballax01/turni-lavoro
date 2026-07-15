@@ -724,3 +724,11 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
 }
+
+// Chiede al browser di proteggere questi dati dalla pulizia automatica
+// dello spazio quando il telefono è pieno (best-effort, no prompt visibile).
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persisted().then(already => {
+    if (!already) navigator.storage.persist().catch(() => {});
+  });
+}
