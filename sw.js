@@ -1,4 +1,4 @@
-const CACHE_NAME = 'turni-lavoro-v12';
+const CACHE_NAME = 'turni-lavoro-v13';
 const ASSETS = [
   './',
   './index.html',

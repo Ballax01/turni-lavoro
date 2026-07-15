@@ -438,8 +438,9 @@ function renderRiepilogo() {
         <button type="button" class="btn-secondary btn-copy" data-month="${key}">📋 Copia testo turni</button>
         <div class="sim-row">
           <label for="sim-${key}">E se guadagnassi... (simulazione, non modifica i turni)</label>
-          <input type="number" id="sim-${key}" class="sim-rate" data-mins="${mins}" placeholder="Tariffa da provare (€/h)" step="0.5" min="0">
+          <input type="number" id="sim-${key}" class="sim-rate" data-mins="${mins}" data-month="${key}" placeholder="Tariffa da provare (€/h)" step="0.5" min="0">
           <div class="sim-result"></div>
+          <button type="button" class="btn-secondary btn-apply-rate" data-month="${key}" style="display:none; margin-top:10px;">Applica questa tariffa a tutti i turni del mese</button>
         </div>
       </div>`;
   }).join('');
@@ -453,13 +454,34 @@ function renderRiepilogo() {
       const mins = Number(input.dataset.mins);
       const v = parseFloat(String(input.value).replace(',', '.'));
       const resultEl = input.nextElementSibling;
+      const applyBtn = resultEl.nextElementSibling;
       if (Number.isFinite(v) && v > 0) {
         resultEl.textContent = `Con ${v}€/h avresti guadagnato: ${formatCurrency((mins / 60) * v)}`;
         resultEl.classList.add('has-value');
+        applyBtn.style.display = 'block';
+        applyBtn.dataset.rate = v;
       } else {
         resultEl.textContent = '';
         resultEl.classList.remove('has-value');
+        applyBtn.style.display = 'none';
+        delete applyBtn.dataset.rate;
       }
+    });
+  });
+
+  list.querySelectorAll('.btn-apply-rate').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.month;
+      const newRate = parseFloat(btn.dataset.rate);
+      if (!Number.isFinite(newRate) || newRate <= 0) return;
+      const monthShifts = shifts.filter(s => monthKey(s.date) === key);
+      const label = capitalize(formatMonthLabel(key));
+      const ok = confirm(`Applicare ${newRate}€/h a tutti i ${monthShifts.length} turni di ${label}? La tariffa attuale di ciascun turno verrà sovrascritta.`);
+      if (!ok) return;
+      monthShifts.forEach(s => { s.rate = newRate; });
+      saveShifts(shifts);
+      refreshAll();
+      showToast(`Tariffa applicata a ${monthShifts.length} turni di ${label} ✓`);
     });
   });
 }
