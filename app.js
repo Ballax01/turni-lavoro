@@ -30,6 +30,16 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+
+function showToast(message) {
+  clearTimeout(toastTimer);
+  toastEl.textContent = message;
+  toastEl.classList.add('show');
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
+}
+
 // --- Time helpers ---
 
 function toMinutes(hhmm) {
@@ -139,6 +149,7 @@ form.addEventListener('submit', e => {
   saveShifts(shifts);
   resetForm();
   renderRecent();
+  showToast('Turno salvato ✓');
 });
 
 function renderRecent() {
@@ -377,6 +388,7 @@ editForm.addEventListener('submit', e => {
   }
   dialog.close();
   refreshAll();
+  showToast('Turno modificato ✓');
 });
 
 document.getElementById('delete-btn').addEventListener('click', () => {
@@ -384,6 +396,7 @@ document.getElementById('delete-btn').addEventListener('click', () => {
   saveShifts(shifts);
   dialog.close();
   refreshAll();
+  showToast('Turno eliminato');
 });
 
 document.getElementById('cancel-btn').addEventListener('click', () => dialog.close());
@@ -410,7 +423,7 @@ document.getElementById('import-cancel-btn').addEventListener('click', () => imp
 // Riconosce righe con una data (gg/mm/aa o simili) e due orari (hh:mm),
 // ignorando il resto (es. "/ 8" o "(8 ore)") perché le ore si ricalcolano da inizio/fine.
 function parseShiftLine(line) {
-  const dateMatch = line.match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{2,4})/);
+  const dateMatch = line.match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})(?:\s*[\/\-.]\s*(\d{2,4}))?/);
   if (!dateMatch) return null;
   const rest = line.slice(dateMatch.index + dateMatch[0].length);
   const timeMatches = [...rest.matchAll(/(\d{1,2})[:.](\d{2})/g)];
@@ -419,7 +432,7 @@ function parseShiftLine(line) {
   let [, d, m, y] = dateMatch;
   const dNum = Number(d), mNum = Number(m);
   if (dNum < 1 || dNum > 31 || mNum < 1 || mNum > 12) return null;
-  if (y.length === 2) y = '20' + y;
+  y = y ? (y.length === 2 ? '20' + y : y) : String(new Date().getFullYear());
   if (y.length !== 4) return null;
 
   const sh = Number(timeMatches[0][1]), sm = Number(timeMatches[0][2]);
@@ -490,6 +503,7 @@ importConfirmBtn.addEventListener('click', () => {
   if (added > 0) saveShifts(shifts);
   importDialog.close();
   refreshAll();
+  showToast(added === 1 ? '1 turno importato ✓' : `${added} turni importati ✓`);
 });
 
 function refreshAll() {
