@@ -661,19 +661,55 @@ document.getElementById('open-import-btn').addEventListener('click', () => {
 
 document.getElementById('import-cancel-btn').addEventListener('click', () => importDialog.close());
 
-// Riconosce righe con una data (gg/mm/aa o simili) e due orari (hh:mm),
+const MONTH_NAMES = {
+  gen: 1, gennaio: 1, feb: 2, febbraio: 2, mar: 3, marzo: 3, apr: 4, aprile: 4,
+  mag: 5, maggio: 5, giu: 6, giugno: 6, lug: 7, luglio: 7, ago: 8, agosto: 8,
+  set: 9, settembre: 9, ott: 10, ottobre: 10, nov: 11, novembre: 11, dic: 12, dicembre: 12,
+};
+const MONTH_NAME_RE = new RegExp(`(\\d{1,2})\\s+(${Object.keys(MONTH_NAMES).join('|')})[a-z]*\\.?`, 'i');
+
+// Trova la data in una riga, provando prima il formato numerico (gg/mm/aa).
+// Scarta i "falsi positivi" numerici che in realtà sono pezzi di un orario
+// (es. "01" in "17:30-01:30"), riconoscibili perché precedute da ':' o da
+// un'altra cifra. Se non trova nulla di numerico valido, prova "gg nomemese"
+// (es. "15 luglio" o "15 lug") — in quel caso l'anno non viene estratto
+// (per evitare di confonderlo con un orario tipo "1730") e si usa quello attuale.
+function matchDate(line) {
+  const dateRe = /(\d{1,2})\s*[\/\-.]\s*(\d{1,2})(?:\s*[\/\-.]\s*(\d{2,4}))?/g;
+  let m;
+  while ((m = dateRe.exec(line))) {
+    const before = line[m.index - 1];
+    if (before === ':' || (before && /\d/.test(before))) continue;
+    return { index: m.index, length: m[0].length, day: m[1], month: m[2], year: m[3] };
+  }
+  const named = line.match(MONTH_NAME_RE);
+  if (named) {
+    return { index: named.index, length: named[0].length, day: named[1], month: MONTH_NAMES[named[2].toLowerCase()], year: undefined };
+  }
+  return null;
+}
+
+// Trova gli orari nel resto della riga: prima con separatore (: o .),
+// e solo se non ne trova nessuno prova il formato compatto senza separatore (es. "1730").
+function findTimes(text) {
+  const withSep = [...text.matchAll(/(\d{1,2})[:.](\d{2})/g)];
+  if (withSep.length > 0) return withSep;
+  return [...text.matchAll(/\b([01]\d|2[0-3])([0-5]\d)\b/g)];
+}
+
+// Riconosce righe con una data e almeno l'orario di inizio,
 // ignorando il resto (es. "/ 8" o "(8 ore)") perché le ore si ricalcolano da inizio/fine.
 function parseShiftLine(line) {
-  const dateMatch = line.match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})(?:\s*[\/\-.]\s*(\d{2,4}))?/);
-  if (!dateMatch) return null;
-  const rest = line.slice(dateMatch.index + dateMatch[0].length);
-  const timeMatches = [...rest.matchAll(/(\d{1,2})[:.](\d{2})/g)];
+  const dateInfo = matchDate(line);
+  if (!dateInfo) return null;
+  const rest = line.slice(dateInfo.index + dateInfo.length);
+  const timeMatches = findTimes(rest);
   if (timeMatches.length < 1) return null;
 
-  let [, d, m, y] = dateMatch;
-  const dNum = Number(d), mNum = Number(m);
+  const dNum = Number(dateInfo.day), mNum = Number(dateInfo.month);
   if (dNum < 1 || dNum > 31 || mNum < 1 || mNum > 12) return null;
-  y = y ? (y.length === 2 ? '20' + y : y) : String(new Date().getFullYear());
+  let y = dateInfo.year ? String(dateInfo.year) : String(new Date().getFullYear());
+  y = y.length === 2 ? '20' + y : y;
   if (y.length !== 4) return null;
 
   const sh = Number(timeMatches[0][1]), sm = Number(timeMatches[0][2]);
