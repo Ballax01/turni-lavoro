@@ -303,6 +303,43 @@ h2.section-title {
 }
 .sim-result.has-value { color: var(--accent-2); font-weight: 600; }
 
+.ios-warning {
+  display: none;
+  margin: 0 16px 4px;
+  padding: 12px 14px;
+  background: rgba(210, 153, 34, 0.12);
+  border: 1px solid #d29922;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.ios-warning.show { display: block; }
+
+.ios-warning button {
+  display: block;
+  margin-top: 8px;
+  background: #d29922;
+  color: #1a1305;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ios-warning .ios-dismiss {
+  float: right;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  padding: 0 0 0 10px;
+  margin: 0;
+  display: inline;
+}
+
 .backup-hint {
   font-size: 13px;
   color: var(--text-dim);

@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'turni-lavoro:shifts';
 const RATE_KEY = 'turni-lavoro:rate';
+const LAST_BACKUP_KEY = 'turni-lavoro:lastBackup';
 
 const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno',
   'luglio','agosto','settembre','ottobre','novembre','dicembre'];
@@ -545,6 +546,8 @@ document.getElementById('export-backup-btn').addEventListener('click', () => {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString());
+  renderIosWarning();
   showToast('Backup esportato ✓');
 });
 
@@ -750,8 +753,44 @@ function refreshAll() {
   renderRiepilogo();
 }
 
+// --- Avviso iOS: lo storage dei siti web su iPhone/iPad non è affidabile
+// come quello di un'app nativa, quindi ricordiamo di fare backup spesso. ---
+
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let iosWarningDismissed = false;
+
+function renderIosWarning() {
+  const banner = document.getElementById('ios-warning');
+  if (!isIOS || iosWarningDismissed || shifts.length === 0) {
+    banner.classList.remove('show');
+    return;
+  }
+  const last = localStorage.getItem(LAST_BACKUP_KEY);
+  let daysText;
+  if (!last) {
+    daysText = 'Non hai ancora fatto un backup.';
+  } else {
+    const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+    daysText = days <= 0 ? 'Ultimo backup: oggi.' : `Ultimo backup: ${days} giorno${days === 1 ? '' : 'i'} fa.`;
+  }
+  banner.innerHTML = `
+    <button type="button" class="ios-dismiss" aria-label="Chiudi">✕</button>
+    ⚠️ Su iPhone/iPad i dati possono sparire senza preavviso (limite di iOS, non un bug dell'app). ${daysText}
+    <button type="button" id="ios-warning-backup-btn">Esporta backup ora</button>`;
+  banner.classList.add('show');
+  banner.querySelector('.ios-dismiss').addEventListener('click', () => {
+    iosWarningDismissed = true;
+    banner.classList.remove('show');
+  });
+  document.getElementById('ios-warning-backup-btn').addEventListener('click', () => {
+    document.getElementById('export-backup-btn').click();
+  });
+}
+
 // --- Init ---
 switchView('aggiungi');
+renderIosWarning();
 
 // --- Service worker ---
 if ('serviceWorker' in navigator) {
